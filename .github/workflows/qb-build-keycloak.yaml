@@ -1,0 +1,94 @@
+---
+name: Build .tgz + image for Keycloak
+run-name: "Image for ${{ github.event.repository.name }}: ${{ github.run_number }} - ${{ github.actor }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to create"
+        required: true
+        default: "v1"
+      forceCreate:
+        type: boolean
+        description: "Force tag creation"
+        required: false
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create a New Tag
+        uses: nookyo/qubership-workflow-hub/actions/tag-action@main
+        with:
+          ref: ${{ github.ref_name }}
+          tag-name: ${{ inputs.tag }}
+          force-create: ${{ inputs.forceCreate }}
+          switch-to-tag: true
+          create-release: true
+          skip-checkout: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@v5
+        with:
+          maven-version: 3.9.8
+
+      - name: build
+        uses: ./.github/actions/build-keycloak
+        with:
+          upload-m2-repo: true
+          upload-dist: true
+
+      - name: "Upload assets"
+        uses: netcracker/qubership-workflow-hub/actions/assets-action@main
+        with:
+          tag: ${{ inputs.tag }}
+          item-path: quarkus/dist/target/keycloak-*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image preparation
+        run: |
+          version=$(ls quarkus/dist/target/keycloak-*.tar.gz | cut -d'/' -f4 | sed "s/keycloak-\(.*\).tar.gz/\1/")
+          echo "keycloak_version=${version,,}" >> $GITHUB_ENV
+          cp $GITHUB_WORKSPACE/quarkus/dist/target/keycloak-*.tar.gz $GITHUB_WORKSPACE/quarkus/container
+          echo "keycloak_tar=`basename $(ls quarkus/container/keycloak-*.tar.gz)`" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          provenance: false
+          context: ${{ github.workspace }}/quarkus/container
+          file: ${{ github.workspace }}/quarkus/container/Dockerfile
+          build-args: |
+            KEYCLOAK_DIST=${{ env.keycloak_tar }}
+          push: "true"
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/keycloak:${{ env.keycloak_version }}
+          platforms: linux/amd64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
