@@ -89,6 +89,6 @@ jobs:
             KEYCLOAK_DIST=${{ env.keycloak_tar }}
           push: "true"
           tags: |
-            ghcr.io/${{ github.repository_owner }}/keycloak:${{ env.keycloak_version }}
+            ghcr.io/${{ github.repository_owner,, }}/keycloak:${{ env.keycloak_version }}
           platforms: linux/amd64
           github-token: ${{ secrets.GITHUB_TOKEN }}
