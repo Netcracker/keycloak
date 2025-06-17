@@ -82,6 +82,9 @@ jobs:
       - name: Set lowercase repository owner
         run: echo "repo_owner_lc=$(echo '${GITHUB_REPOSITORY_OWNER}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
+      - name: Debug tag
+        run: echo "ghcr.io/${{ env.repo_owner_lc }}/keycloak:${{ env.keycloak_version }}"
+
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
